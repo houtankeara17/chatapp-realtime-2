@@ -1,10 +1,11 @@
-// src/pages/Register.jsx
-import React, { useState } from "react";
+import React, { useState, useContext } from "react";
 import API from "../api/api";
 import { useNavigate } from "react-router-dom";
+import { AuthContext } from "../context/AuthContext";
 import toast from "react-hot-toast";
 
 export default function Register() {
+  const { registerSuccess } = useContext(AuthContext);
   const [form, setForm] = useState({
     username: "",
     password: "",
@@ -15,12 +16,12 @@ export default function Register() {
   const submit = async (e) => {
     e.preventDefault();
     try {
-      await API.post("/api/auth/register", form);
-      toast.success("Register successful, please login");
+      const res = await API.post("/api/auth/register", form);
+      const { user } = res.data;
+      registerSuccess(user);
       nav("/login");
     } catch (err) {
-      console.error(err.response?.data || err.message);
-      toast.error("Register failed");
+      toast.error(err.response?.data?.error || "Register failed");
     }
   };
 
@@ -31,21 +32,21 @@ export default function Register() {
         <input
           value={form.username}
           onChange={(e) => setForm({ ...form, username: e.target.value })}
-          placeholder="username"
+          placeholder="Username"
           className="w-full p-2 border rounded"
           required
         />
         <input
           value={form.nickname}
           onChange={(e) => setForm({ ...form, nickname: e.target.value })}
-          placeholder="nickname"
+          placeholder="Nickname"
           className="w-full p-2 border rounded"
         />
         <input
           type="password"
           value={form.password}
           onChange={(e) => setForm({ ...form, password: e.target.value })}
-          placeholder="password"
+          placeholder="Password"
           className="w-full p-2 border rounded"
           required
         />

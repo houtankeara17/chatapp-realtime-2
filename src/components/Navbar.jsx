@@ -1,6 +1,7 @@
 import React, { useContext } from "react";
 import { AuthContext } from "../context/AuthContext";
 import { Link, useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
 
 export default function Navbar() {
   const { user, logout } = useContext(AuthContext);
@@ -24,6 +25,7 @@ export default function Navbar() {
             <button
               onClick={() => {
                 logout();
+                toast.success("Logged out");
                 nav("/login");
               }}
               className="px-3 py-1 border rounded"

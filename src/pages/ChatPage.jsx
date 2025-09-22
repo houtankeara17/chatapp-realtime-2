@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useContext, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import React, { useEffect, useState, useContext } from "react";
+import { useParams } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 import API from "../api/api";
 import { Client } from "@stomp/stompjs";
@@ -7,142 +7,111 @@ import SockJS from "sockjs-client";
 import toast from "react-hot-toast";
 
 export default function ChatPage() {
-  const { id } = useParams(); // receiver id
   const { user } = useContext(AuthContext);
+  const { id: receiverId } = useParams();
   const [receiver, setReceiver] = useState(null);
   const [messages, setMessages] = useState([]);
-  const [text, setText] = useState("");
-  const navigate = useNavigate();
-  const clientRef = useRef(null);
-  const bottomRef = useRef(null);
+  const [input, setInput] = useState("");
+  const [stompClient, setStompClient] = useState(null);
 
   // Fetch receiver info
   useEffect(() => {
-    if (!user) return navigate("/login");
-    const fetchReceiver = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        const res = await API.get("/api/auth/users", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const r = res.data.payload.find((u) => u.id === parseInt(id));
-        setReceiver(r);
-      } catch (err) {
-        toast.error("Failed to load user");
-      }
-    };
-    fetchReceiver();
-  }, [id, user, navigate]);
+    if (!user) return;
+    API.get(`/api/auth/users`)
+      .then((res) => {
+        const u = res.data.payload.find((u) => u.id === parseInt(receiverId));
+        if (!u) toast.error("User not found");
+        else setReceiver(u);
+      })
+      .catch(() => toast.error("Failed to load user"));
+  }, [receiverId, user]);
 
   // Fetch chat history
   useEffect(() => {
     if (!user || !receiver) return;
-    const fetchHistory = async () => {
-      try {
-        const res = await API.get("/api/messages/history", {
-          params: { user1: user.id, user2: receiver.id },
-        });
-        setMessages(res.data);
-      } catch (err) {
-        toast.error("Failed to load history");
-      }
-    };
-    fetchHistory();
+    API.get("/api/messages/history", {
+      params: { user1: user.id, user2: receiver.id },
+    })
+      .then((res) => setMessages(res.data))
+      .catch(() => toast.error("Failed to load chat history"));
   }, [user, receiver]);
 
-  // Setup STOMP
+  // STOMP connection
   useEffect(() => {
     if (!user) return;
-    const socket = new SockJS("http://localhost:8080/ws");
+
     const client = new Client({
-      webSocketFactory: () => socket,
+      webSocketFactory: () => new SockJS("http://localhost:8080/ws"),
       debug: (str) => console.log(str),
       reconnectDelay: 5000,
     });
 
     client.onConnect = () => {
+      // Subscribe to personal queue
       client.subscribe(`/queue/messages-${user.id}`, (msg) => {
-        const body = JSON.parse(msg.body);
-        setMessages((prev) => [...prev, body]);
-        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+        const received = JSON.parse(msg.body);
+        setMessages((prev) => [...prev, received]);
       });
     };
+
     client.activate();
-    clientRef.current = client;
+    setStompClient(client);
 
     return () => client.deactivate();
   }, [user]);
 
   const sendMessage = () => {
-    if (!text.trim() || !user || !receiver) return;
+    if (!input || !stompClient || !receiver) return;
+
     const payload = {
-      content: text,
+      content: input,
       sender: { id: user.id },
       receiver: { id: receiver.id },
     };
-    clientRef.current.publish({
+
+    stompClient.publish({
       destination: "/app/chat.send",
       body: JSON.stringify(payload),
     });
-    setText("");
+    setInput("");
   };
 
   return (
-    <div className="max-w-2xl mx-auto mt-6 p-4 border rounded shadow flex flex-col h-[80vh]">
-      {receiver && (
-        <div className="mb-4 flex items-center gap-3 border-b pb-2">
-          <div className="w-10 h-10 bg-blue-400 rounded-full flex items-center justify-center text-white font-bold">
-            {receiver.nickname[0].toUpperCase()}
-          </div>
-          <div>
-            <div className="font-semibold">{receiver.nickname}</div>
-            <div className="text-sm text-gray-500">{receiver.username}</div>
-          </div>
-          <button
-            className="ml-auto text-blue-500"
-            onClick={() => navigate("/")}
-          >
-            Prev
-          </button>
-        </div>
-      )}
+    <div className="p-6">
+      <h2 className="text-xl mb-4">
+        Chat with {receiver?.nickname || "loading..."}
+      </h2>
 
-      <div className="flex-1 overflow-auto mb-2">
-        {messages.map((m, i) => (
+      <div className="border h-[400px] overflow-y-auto p-2 mb-4 flex flex-col gap-2">
+        {messages.map((m) => (
           <div
-            key={i}
-            className={`my-2 flex ${
-              m.sender.id === user.id ? "justify-end" : "justify-start"
+            key={m.id || Math.random()}
+            className={`p-2 rounded max-w-xs ${
+              m.sender.id === user.id
+                ? "bg-blue-200 self-end"
+                : "bg-gray-200 self-start"
             }`}
           >
-            <div
-              className={`p-2 rounded max-w-xs break-words ${
-                m.sender.id === user.id
-                  ? "bg-blue-500 text-white"
-                  : "bg-gray-200 text-gray-800"
-              }`}
-            >
-              {m.content}
-              <div className="text-xs text-gray-400 mt-1">
-                {new Date(m.timestamp).toLocaleTimeString()}
-              </div>
+            <div className="text-sm font-semibold">{m.sender.nickname}</div>
+            <div>{m.content}</div>
+            <div className="text-xs text-gray-500">
+              {new Date(m.timestamp).toLocaleTimeString()}
             </div>
           </div>
         ))}
-        <div ref={bottomRef} />
       </div>
 
       <div className="flex gap-2">
         <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
           className="flex-1 p-2 border rounded"
-          placeholder="Type a message"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Type a message..."
           onKeyDown={(e) => e.key === "Enter" && sendMessage()}
         />
         <button
           onClick={sendMessage}
-          className="bg-blue-500 text-white p-2 rounded"
+          className="px-4 py-2 bg-blue-500 text-white rounded"
         >
           Send
         </button>

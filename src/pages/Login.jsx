@@ -1,4 +1,3 @@
-// src/pages/Login.jsx
 import React, { useState, useContext } from "react";
 import API from "../api/api";
 import { useNavigate } from "react-router-dom";
@@ -14,12 +13,11 @@ export default function Login() {
     e.preventDefault();
     try {
       const res = await API.post("/api/auth/login", form);
-      const { token, user } = res.data.payload ? res.data.payload : res.data;
+      const { token, user } = res.data;
       login(user, token);
       nav("/");
     } catch (err) {
-      console.error(err.response?.data || err.message);
-      toast.error("Login failed");
+      toast.error(err.response?.data?.message || "Login failed");
     }
   };
 
@@ -30,7 +28,7 @@ export default function Login() {
         <input
           value={form.username}
           onChange={(e) => setForm({ ...form, username: e.target.value })}
-          placeholder="username"
+          placeholder="Username"
           className="w-full p-2 border rounded"
           required
         />
@@ -38,7 +36,7 @@ export default function Login() {
           type="password"
           value={form.password}
           onChange={(e) => setForm({ ...form, password: e.target.value })}
-          placeholder="password"
+          placeholder="Password"
           className="w-full p-2 border rounded"
           required
         />
