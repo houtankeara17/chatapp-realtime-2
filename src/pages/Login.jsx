@@ -15,8 +15,7 @@ export default function Login() {
     try {
       const res = await API.post("/api/auth/login", form);
       const { token, user } = res.data.payload ? res.data.payload : res.data;
-      login(user, token);
-      toast.success("Login successful");
+      login(user, token); // triggers toast in AuthContext
       nav("/");
     } catch (err) {
       console.error(err.response?.data || err.message);
