@@ -14,26 +14,40 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [stompClient, setStompClient] = useState(null);
 
+  const config = {
+    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+  };
+
   // Fetch receiver info
   useEffect(() => {
     if (!user) return;
-    API.get(`/api/auth/users`)
+
+    API.get("/api/auth/users", config)
       .then((res) => {
-        const u = res.data.payload.find((u) => u.id === parseInt(receiverId));
+        const u = res.data.payload.find(
+          (u) => u.id === parseInt(receiverId, 10)
+        );
         if (!u) toast.error("User not found");
         else setReceiver(u);
       })
       .catch(() => toast.error("Failed to load user"));
   }, [receiverId, user]);
 
-  // Fetch chat history
+  // Fetch chat history + mark as read
   useEffect(() => {
     if (!user || !receiver) return;
+
+    // Fetch chat history
     API.get("/api/messages/history", {
       params: { user1: user.id, user2: receiver.id },
     })
       .then((res) => setMessages(res.data))
       .catch(() => toast.error("Failed to load chat history"));
+
+    // Mark messages as read
+    API.put("/api/messages/read", null, {
+      params: { senderId: receiver.id },
+    }).catch(() => console.warn("⚠️ Failed to mark as read"));
   }, [user, receiver]);
 
   // STOMP connection
@@ -47,7 +61,6 @@ export default function ChatPage() {
     });
 
     client.onConnect = () => {
-      // Subscribe to personal queue
       client.subscribe(`/queue/messages-${user.id}`, (msg) => {
         const received = JSON.parse(msg.body);
         setMessages((prev) => [...prev, received]);
@@ -73,6 +86,7 @@ export default function ChatPage() {
       destination: "/app/chat.send",
       body: JSON.stringify(payload),
     });
+
     setInput("");
   };
 

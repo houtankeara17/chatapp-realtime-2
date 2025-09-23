@@ -18,11 +18,16 @@ export default function Register() {
     try {
       const res = await API.post("/api/auth/register", form);
       const user = res.data.payload || res.data.user;
-      registerSuccess(user); // This triggers toast
+
+      if (registerSuccess) {
+        registerSuccess(user);
+      }
+
+      toast.success("Register successful! Please login.");
       nav("/login");
     } catch (err) {
       console.error(err.response?.data || err.message);
-      toast.error(err.response?.data?.error || "Register failed");
+      toast.error(err.response?.data?.message || "Register failed");
     }
   };
 
