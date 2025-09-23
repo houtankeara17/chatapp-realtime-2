@@ -11,22 +11,31 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  // Restore session from token
+  // ✅ Restore session from localStorage
   useEffect(() => {
     const token = localStorage.getItem("token");
-    if (!token) return setLoading(false);
+    const storedUser = localStorage.getItem("user");
 
-    API.get("/api/auth/me", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    if (token && storedUser) {
+      setUser(JSON.parse(storedUser));
+    }
+
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    // Re-validate with backend
+    API.get("/api/auth/me")
       .then((res) => {
         if (res.data.success) {
           setUser(res.data.payload);
+          localStorage.setItem("user", JSON.stringify(res.data.payload));
         } else {
-          localStorage.removeItem("token");
+          logout();
         }
       })
-      .catch(() => localStorage.removeItem("token"))
+      .catch(() => logout())
       .finally(() => setLoading(false));
   }, []);
 
@@ -36,12 +45,11 @@ export const AuthProvider = ({ children }) => {
       const res = await API.post("/api/auth/register", formData);
       if (res.data.success) {
         toast.success("Registration successful");
-        console.log("✅ Registered user:", res.data.payload);
         navigate("/login");
       } else {
         toast.error(res.data.message || "Registration failed");
       }
-    } catch (err) {
+    } catch {
       toast.error("Registration error");
     }
   };
@@ -49,6 +57,7 @@ export const AuthProvider = ({ children }) => {
   // ✅ Login
   const login = (userData, token) => {
     localStorage.setItem("token", token);
+    localStorage.setItem("user", JSON.stringify(userData));
     setUser(userData);
     toast.success("Login successful");
     navigate("/home");
@@ -57,6 +66,7 @@ export const AuthProvider = ({ children }) => {
   // ✅ Logout
   const logout = () => {
     localStorage.removeItem("token");
+    localStorage.removeItem("user");
     setUser(null);
     toast.success("Logged out");
     navigate("/login");

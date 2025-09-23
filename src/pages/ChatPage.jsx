@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useContext } from "react";
-import { useParams } from "react-router-dom";
+import React, { useEffect, useState, useContext, useRef } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 import API from "../api/api";
 import { Client } from "@stomp/stompjs";
@@ -7,47 +7,56 @@ import SockJS from "sockjs-client";
 import toast from "react-hot-toast";
 
 export default function ChatPage() {
-  const { user } = useContext(AuthContext);
+  const { user, setUser, logout } = useContext(AuthContext);
   const { id: receiverId } = useParams();
+  const navigate = useNavigate();
   const [receiver, setReceiver] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [stompClient, setStompClient] = useState(null);
+  const chatBoxRef = useRef(null);
 
-  const config = {
-    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-  };
+  // Redirect if no user/token
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return navigate("/login");
+
+    if (!user) {
+      API.get("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
+        .then((res) => setUser(res.data.payload))
+        .catch(() => {
+          localStorage.removeItem("token");
+          navigate("/login");
+        });
+    }
+  }, [user]);
 
   // Fetch receiver info
   useEffect(() => {
     if (!user) return;
-
-    API.get("/api/auth/users", config)
+    API.get("/api/auth/users", {
+      headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+    })
       .then((res) => {
-        const u = res.data.payload.find(
-          (u) => u.id === parseInt(receiverId, 10)
-        );
+        const u = res.data.payload.find((u) => u.id === parseInt(receiverId));
         if (!u) toast.error("User not found");
         else setReceiver(u);
       })
       .catch(() => toast.error("Failed to load user"));
   }, [receiverId, user]);
 
-  // Fetch chat history + mark as read
+  // Fetch chat history
   useEffect(() => {
     if (!user || !receiver) return;
-
-    // Fetch chat history
     API.get("/api/messages/history", {
       params: { user1: user.id, user2: receiver.id },
+      headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
     })
-      .then((res) => setMessages(res.data))
+      .then((res) => {
+        // Handle payload format
+        setMessages(res.data.payload || res.data);
+      })
       .catch(() => toast.error("Failed to load chat history"));
-
-    // Mark messages as read
-    API.put("/api/messages/read", null, {
-      params: { senderId: receiver.id },
-    }).catch(() => console.warn("⚠️ Failed to mark as read"));
   }, [user, receiver]);
 
   // STOMP connection
@@ -56,14 +65,33 @@ export default function ChatPage() {
 
     const client = new Client({
       webSocketFactory: () => new SockJS("http://localhost:8080/ws"),
-      debug: (str) => console.log(str),
       reconnectDelay: 5000,
+      debug: (str) => console.log(str),
     });
 
     client.onConnect = () => {
       client.subscribe(`/queue/messages-${user.id}`, (msg) => {
         const received = JSON.parse(msg.body);
-        setMessages((prev) => [...prev, received]);
+
+        // Only add if relevant chat
+        if (
+          (received.sender.id === receiver?.id &&
+            received.receiver.id === user.id) ||
+          (received.sender.id === user.id &&
+            received.receiver.id === receiver?.id)
+        ) {
+          setMessages((prev) => [...prev, received]);
+        }
+
+        // Toast notification for messages from others
+        if (received.sender.id !== user.id) {
+          toast(
+            `New message from ${received.sender.nickname}: ${received.content}`,
+            {
+              icon: "💬",
+            }
+          );
+        }
       });
     };
 
@@ -71,7 +99,13 @@ export default function ChatPage() {
     setStompClient(client);
 
     return () => client.deactivate();
-  }, [user]);
+  }, [user, receiver]);
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    if (chatBoxRef.current)
+      chatBoxRef.current.scrollTop = chatBoxRef.current.scrollHeight;
+  }, [messages]);
 
   const sendMessage = () => {
     if (!input || !stompClient || !receiver) return;
@@ -90,13 +124,18 @@ export default function ChatPage() {
     setInput("");
   };
 
+  if (!user) return null;
+
   return (
     <div className="p-6">
       <h2 className="text-xl mb-4">
         Chat with {receiver?.nickname || "loading..."}
       </h2>
 
-      <div className="border h-[400px] overflow-y-auto p-2 mb-4 flex flex-col gap-2">
+      <div
+        ref={chatBoxRef}
+        className="border h-[400px] overflow-y-auto p-2 mb-4 flex flex-col gap-2"
+      >
         {messages.map((m) => (
           <div
             key={m.id || Math.random()}

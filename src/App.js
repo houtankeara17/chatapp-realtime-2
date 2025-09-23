@@ -7,6 +7,7 @@ import Home from "./pages/Home";
 import ChatPage from "./pages/ChatPage";
 import Navbar from "./components/Navbar";
 import { Toaster } from "react-hot-toast";
+// import UserListPage from "./pages/UserListPage";
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
             <Route path="/chat/:id" element={<ChatPage />} />
             <Route path="/" element={<Home />} />
             <Route path="*" element={<Navigate to="/" />} />
+            {/* <Route path="/home" element={<UserListPage />} /> */}
           </Routes>
         </div>
         <Toaster position="top-right" />
